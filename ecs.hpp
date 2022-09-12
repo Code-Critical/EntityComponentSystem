@@ -5,28 +5,22 @@
 #include <vector>
 #include <bitset>
 
-/*
-    Cute little ECS implementation, for shits and giggles.
-*/
 namespace ecs {
-    constexpr uint32_t MAX_ENTITIES = 100;
+    constexpr uint32_t MAX_ENTITIES = 1000000;
     constexpr uint32_t MAX_COMPONENTS = 32;
 
     using entityHandle = uint32_t;
-    using componentHandle = uint32_t;
     using componentBitmask = std::bitset<MAX_COMPONENTS>;
     
     template<typename T, int v> struct tagged_type {
         static constexpr int tag = v;
         using type = T;
     };
-
-    static uint32_t entityCount = 0;
+    
+    static std::vector<ecs::componentBitmask> entities;
+    static std::shared_ptr<void> components[MAX_COMPONENTS];
     static std::vector<ecs::entityHandle> recycling;
-
-    static ecs::componentBitmask entities[MAX_ENTITIES];
-    static void* components[MAX_COMPONENTS] = { nullptr };
-
+    
     bool registerEntity(ecs::entityHandle& entity);
     bool unregisterEntity(ecs::entityHandle entity);
 
@@ -38,35 +32,32 @@ namespace ecs {
 
     template<typename T> bool setComponent(ecs::entityHandle entity, typename T::type value);
     template<typename T> bool getComponent(ecs::entityHandle entity, typename T::type& value);
-
-    template<typename T> struct componentIterator;
 }
 
 bool ecs::registerEntity(ecs::entityHandle& entity) {
-    if (entityCount >= MAX_ENTITIES) {
-        return false;
-    }
-    
     if (recycling.size() > 0) {
         entity = recycling.back();
+        entities[entity].reset();
         recycling.pop_back();
     } else {
-        entity = entityCount;
+        entity = entities.size();
+        entities.push_back(0);
     }
-    
-    entityCount++;
 
     return true;
 }
 
 bool ecs::unregisterEntity(ecs::entityHandle entity) {
-    if (entity >= MAX_ENTITIES) {
+    ecs::entityHandle last = entities.size() - 1;
+
+    if (entity == last) {
+        entities.pop_back();
+    } else if (entity < last) {
+        recycling.push_back(entity);
+        entities[entity].reset();
+    } else {
         return false;
     }
-    
-    recycling.push_back(entity);
-    entities[entity].reset();
-    entityCount--;
 
     return true;
 }
@@ -79,7 +70,9 @@ template<typename T> bool ecs::registerComponent() {
         return false;
     }
 
-    components[T::tag] = new C[MAX_ENTITIES];    
+    components[T::tag] = std::make_shared<std::vector<C>>();
+
+    std::vector<C>* ref = static_cast<std::vector<C>*>(components[T::tag].get());
 
     return true;
 }
@@ -92,8 +85,7 @@ template<typename T> bool ecs::unregisterComponent() {
         return false;
     }
 
-    delete[] static_cast<C*>(components[T::tag]);  
-    components[T::tag] = nullptr;  
+    components[T::tag].reset();
 
     return true;
 }
@@ -132,7 +124,13 @@ template<typename T> bool ecs::setComponent(ecs::entityHandle entity, typename T
         return false;
     }
 
-    static_cast<C*>(components[T::tag])[entity] = value;
+    std::vector<C>* ref = static_cast<std::vector<C>*>(components[T::tag].get());
+
+    if (entity >= ref->size()) {
+        ref->resize(entity + 1);
+    }
+
+    (*ref)[entity] = value;
 
     return true;
 }
@@ -145,75 +143,15 @@ template<typename T> bool ecs::getComponent(ecs::entityHandle entity, typename T
         return false;
     }
 
-    value = static_cast<C*>(components[T::tag])[entity];
+    std::vector<C>* ref = static_cast<std::vector<C>*>(components[T::tag].get());
+
+    if (entity >= ref->size()) {
+        ref->resize(entity + 1);
+    }
+
+    value = (*ref)[entity];
 
     return true;   
 }
-
-template<typename T> struct ecs::componentIterator {
-    static_assert((T::tag >= 0) && (T::tag < MAX_COMPONENTS));
-    using C = typename T::type;
-
-    struct iterator {
-        int location = 0;
-
-        iterator(int offset) {
-            location = offset;
-        }
-
-        C& operator*() const {
-            C* base = static_cast<C*>(components[T::tag]);
-            return base[location];
-        }
-        
-        bool operator==(const iterator& operand) const {
-            return (location == operand.location);
-        }
-
-        bool operator!=(const iterator& operand) const {
-            return (location != operand.location);
-        }
-
-        iterator& operator++() {
-            bool isBounded;
-            bool isEnabled;
-
-            do {
-                location++;
-                isBounded = (0 <= location) && (location < entityCount + recycling.size());
-                isEnabled = entities[location][T::tag];
-            } while(!isEnabled && isBounded);
-
-            return *this;
-        }
-
-        iterator& operator--() {
-            bool isBounded;
-            bool isEnabled;
-
-            do {
-                location--;
-                isBounded = (0 <= location) && (location < entityCount + recycling.size());
-                isEnabled = entities[location][T::tag];
-            } while(!isEnabled && isBounded);
-
-            return *this;
-        }
-    };
-
-    const iterator begin() const {
-        bool isEnabled = entities[0][T::tag];
-
-        if (isEnabled) {
-            return iterator(0);
-        } else {
-            return ++iterator(0);
-        }
-    }
-
-    const iterator end() const {
-        return iterator(entityCount + recycling.size());
-    }
-};
 
 #endif
