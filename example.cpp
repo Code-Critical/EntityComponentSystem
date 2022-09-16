@@ -40,15 +40,17 @@ int main() {
         setComponent<item_for_sale_type>(entity_id, i % 3 == 0);
     }
 
-    // Example of implementing a system. Iterator returns a writable reference to the data.
-    componentIterator<item_name_type> name_system_accessor;
-    for (std::string& name : name_system_accessor) {
+    // Example of implementing a system. Returns a writable reference to the data.
+    std::vector<item_name_type::type>* names;
+    getIterator<item_name_type>(names);
+
+    for (std::string& name : *names) {
         std::cout << name << std::endl;
+        name = "pie";
     }
 
-    componentIterator<item_value_type> value_system_accessor;
-    for (auto value : value_system_accessor) {
-        std::cout << value << std::endl;
+    for (std::string& name : *names) {
+        std::cout << name << std::endl;
     }
 
     // Retrieve the value of an existing entity-
