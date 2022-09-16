@@ -32,6 +32,8 @@ namespace ecs {
 
     template<typename T> bool setComponent(ecs::entityHandle entity, typename T::type value);
     template<typename T> bool getComponent(ecs::entityHandle entity, typename T::type& value);
+
+    template<typename T> bool getIterator(std::vector<typename T::type>*& iterator);
 }
 
 bool ecs::registerEntity(ecs::entityHandle& entity) {
@@ -126,8 +128,12 @@ template<typename T> bool ecs::setComponent(ecs::entityHandle entity, typename T
 
     std::vector<C>* ref = static_cast<std::vector<C>*>(components[T::tag].get());
 
+    if (entities.size() != ref->size()) {
+        ref->resize(entities.size());
+    }
+
     if (entity >= ref->size()) {
-        ref->resize(entity + 1);
+        return false;
     }
 
     (*ref)[entity] = value;
@@ -145,13 +151,29 @@ template<typename T> bool ecs::getComponent(ecs::entityHandle entity, typename T
 
     std::vector<C>* ref = static_cast<std::vector<C>*>(components[T::tag].get());
 
+    if (entities.size() != ref->size()) {
+        ref->resize(entities.size());
+    }
+
     if (entity >= ref->size()) {
-        ref->resize(entity + 1);
+        return false;
     }
 
     value = (*ref)[entity];
 
     return true;   
+}
+
+template<typename T> bool ecs::getIterator(std::vector<typename T::type>*& iterator) {
+    static_assert((T::tag >= 0) && (T::tag < MAX_COMPONENTS));
+
+    if (components[T::tag] == nullptr) {
+        return false;
+    }
+
+    iterator = static_cast<std::vector<typename T::type>*>(ecs::components[T::tag].get());
+
+    return true;
 }
 
 #endif
